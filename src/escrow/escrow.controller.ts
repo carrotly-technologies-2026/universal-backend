@@ -87,7 +87,10 @@ export class EscrowController {
 
     const hash = createHash('sha256').update(file.buffer).digest('hex');
     const existing = this.store.getWaybill(address, hash);
-    if (existing) return { hash, validation: existing.validation };
+    // A failed check (e.g. model outage) is retried on re-upload instead of cached.
+    if (existing && existing.validation.verdict !== 'unavailable') {
+      return { hash, validation: existing.validation };
+    }
 
     const validation = await this.validator.validate({
       file: file.buffer,

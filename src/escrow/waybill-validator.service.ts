@@ -1,4 +1,4 @@
-import { FinishReason, GoogleGenAI } from '@google/genai';
+import { ApiError, FinishReason, GoogleGenAI } from '@google/genai';
 import { Injectable, Logger } from '@nestjs/common';
 import { EscrowDetails } from './details.js';
 import { WaybillMimeType } from './file-type.js';
@@ -112,9 +112,21 @@ export class WaybillValidator {
       return JSON.parse(response.text) as WaybillValidation;
     } catch (err) {
       this.logger.warn(`Waybill validation failed: ${String(err)}`);
-      return unavailable('Walidacja niedostępna: błąd połączenia z modelem.');
+      // Surface the provider's reason (status + message, never the key) so a
+      // misconfiguration is visible in the UI, not only in server logs.
+      return unavailable(
+        `Walidacja niedostępna: błąd modelu (${describeProviderError(err)}).`,
+      );
     }
   }
+}
+
+function describeProviderError(err: unknown): string {
+  if (err instanceof ApiError) {
+    const reason = /"message"\s*:\s*"([^"]+)"/.exec(err.message)?.[1];
+    return `HTTP ${err.status}: ${reason ?? err.message}`.slice(0, 200);
+  }
+  return (err instanceof Error ? err.message : String(err)).slice(0, 200);
 }
 
 function unavailable(reason: string): WaybillValidation {

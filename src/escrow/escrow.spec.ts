@@ -32,7 +32,7 @@ describe('Escrow API', () => {
   let dataDir: string;
   let escrow: Partial<EscrowAccount> | null;
   const getEscrow = vi.fn(async () => escrow);
-  const validate = vi.fn(async () => VALIDATION);
+  const validate = vi.fn<() => Promise<object>>(async () => VALIDATION);
 
   beforeEach(async () => {
     dataDir = mkdtempSync(join(tmpdir(), 'escrow-'));
@@ -140,6 +140,21 @@ describe('Escrow API', () => {
     await request(server)
       .get(`/escrows/${ADDRESS}/waybills/${'0'.repeat(64)}`)
       .expect(404);
+  });
+
+  it('retries a failed validation on re-upload instead of caching it', async () => {
+    const unavailable = { verdict: 'unavailable', reasons: ['model down'] };
+    validate.mockResolvedValueOnce(unavailable);
+    const upload = () =>
+      request(app.getHttpServer())
+        .post(`/escrows/${ADDRESS}/waybills`)
+        .attach('file', PDF, 'list.pdf')
+        .expect(201);
+
+    expect((await upload()).body.validation).toEqual(unavailable);
+    expect((await upload()).body.validation).toEqual(VALIDATION);
+    expect((await upload()).body.validation).toEqual(VALIDATION);
+    expect(validate).toHaveBeenCalledTimes(2);
   });
 
   it('rejects files that are not PDF/JPEG/PNG by their bytes', async () => {
