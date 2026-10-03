@@ -31,7 +31,16 @@ class RateLimit {
   }
 }
 
-const list = (v?: string) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 10) : undefined);
+/**
+ * Repeated params (?kategorie=a&kategorie=b) or a "|"-separated list. Commas
+ * are not separators: category names contain them ("Dla dzieci, młodzieży i rodziny").
+ */
+const list = (v?: string | string[]) => {
+  const values = (Array.isArray(v) ? v : v ? [v] : []).flatMap((x) => String(x).split('|'));
+  const out = values.map((s) => s.trim()).filter(Boolean).slice(0, 10);
+  return out.length ? out : undefined;
+};
+const sourceList = (v?: string | string[]) => list(Array.isArray(v) ? v : v?.replaceAll(',', '|'));
 
 /** Public "Asystent wiedzy ROPS" API (chat line + advanced search) and its voice tool. */
 @Controller('halohub')
@@ -48,15 +57,16 @@ export class RopsController {
 
   /** ?q=&zrodla=biblioteka,raporty&kategorie=&grupa=&limit=&offset= ; empty q browses. */
   @Get('public/rops/szukaj')
-  szukaj(@Req() req: Request, @Query() q: Record<string, string | undefined>) {
+  szukaj(@Req() req: Request, @Query() q: Record<string, string | string[] | undefined>) {
+    const one = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v);
     this.searchLimit.check(req.ip ?? '');
     return this.rops.szukaj({
-      q: q.q?.slice(0, 300),
-      zrodla: list(q.zrodla),
+      q: one(q.q)?.slice(0, 300),
+      zrodla: sourceList(q.zrodla),
       kategorie: list(q.kategorie),
-      grupa: q.grupa || undefined,
-      limit: Math.min(Math.max(Number(q.limit) || 10, 1), 30),
-      offset: Math.min(Math.max(Number(q.offset) || 0, 0), 300),
+      grupa: one(q.grupa) || undefined,
+      limit: Math.min(Math.max(Number(one(q.limit)) || 10, 1), 30),
+      offset: Math.min(Math.max(Number(one(q.offset)) || 0, 0), 300),
     });
   }
 

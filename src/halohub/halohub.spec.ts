@@ -251,6 +251,9 @@ describe('Halo, Hub! API (MongoDB)', () => {
     const s = (await request(server()).get('/halohub/public/rops/szukaj?q=usługi%20opiekuńcze%20seniorów&zrodla=raporty').expect(200)).body;
     expect(s.wyniki[0]).toMatchObject({ tytul: 'Usługi społeczne w Małopolsce 2025', zrodlo_nazwa: 'Raporty z badań ROPS', pliki: [{ nazwa: 'Raport (PDF)', url: 'https://rops.krakow.pl/pliki-do-pobrania/wpis,2025-uslugi,1' }] });
     const browse = (await request(server()).get('/halohub/public/rops/szukaj?zrodla=biblioteka').expect(200)).body;
+    // Repeated params and commas inside category names.
+    await request(server()).get('/halohub/public/rops/szukaj?kategorie=Dla%20dzieci%2C%20m%C5%82odzie%C5%BCy%20i%20rodziny&kategorie=Dla%20senior%C3%B3w').expect(200);
+    await request(server()).get('/halohub/public/rops/szukaj?q=a&q=b&zrodla=biblioteka&zrodla=raporty').expect(200);
     expect(browse.razem).toBe(2);
 
     const a = (await request(server()).post('/halohub/public/rops/zapytaj').send({ pytanie: 'Jakie są deficyty usług opiekuńczych dla seniorów?' }).expect(200)).body;
