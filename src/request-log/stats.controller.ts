@@ -1,6 +1,7 @@
 import { Controller, Get, Header, Req, Res } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { locate } from './geo.js';
 import { GroupStats, RequestStatsService } from './request-stats.service.js';
 
 @Controller('stats')
@@ -32,9 +33,24 @@ export class StatsController {
     const statusRows = [...s.byStatus]
       .sort(([a], [b]) => a - b)
       .map(([status, count]) => [String(status), String(count)]);
+    const ipRows = groupRows(s.byIp).map(([ip, ...rest]) => [
+      ip,
+      locate(ip).label,
+      ...rest,
+      s.byIp.get(ip)!.lastUserAgent,
+    ]);
+    const routeRows = groupRows(s.byRoute).map(([route, ...rest]) => {
+      const g = s.byRoute.get(route)!;
+      return [
+        route,
+        ...rest,
+        `${(g.totalDurationMs / g.requests).toFixed(1)} ms`,
+      ];
+    });
     const recentRows = s.recent.map((e) => [
       fmtDate(e.time),
       e.ip,
+      e.location,
       `${e.method} ${e.url}`,
       e.completed ? String(e.status) : `${e.status} aborted`,
       `${e.durationMs.toFixed(1)} ms`,
@@ -54,16 +70,18 @@ export class StatsController {
   .muted { color: #777; }
 </style></head><body>
 <h1>Request stats</h1>
-<p>${s.total} requests since ${fmtDate(s.startedAt)} (UTC) · ${s.byIp.size} IPs · ${s.byRoute.size} routes
+<p>${s.total} requests since ${fmtDate(s.startedAt)} (UTC) · ${s.byIp.size} IPs · ${s.byCountry.size} countries · ${s.byRoute.size} routes
 <br><span class="muted">In memory: resets on restart/deploy. Refresh to update.</span></p>
 <h2>By status</h2>
 ${table(['Status', 'Requests'], statusRows)}
 <h2>By IP</h2>
-${table(['IP', 'Requests', 'Errors', 'Last seen (UTC)', 'Last user agent'], groupRows(s.byIp, true))}
+${table(['IP', 'Location', 'Requests', 'Errors', 'Last seen (UTC)', 'Last user agent'], ipRows)}
+<h2>By country</h2>
+${table(['Country', 'Requests', 'Errors', 'Last seen (UTC)'], groupRows(s.byCountry))}
 <h2>By route</h2>
-${table(['Route', 'Requests', 'Errors', 'Last seen (UTC)', 'Avg time'], groupRows(s.byRoute, false))}
+${table(['Route', 'Requests', 'Errors', 'Last seen (UTC)', 'Avg time'], routeRows)}
 <h2>Last ${s.recent.length} requests</h2>
-${table(['Time (UTC)', 'IP', 'Request', 'Status', 'Time', 'User agent'], recentRows)}
+${table(['Time (UTC)', 'IP', 'Location', 'Request', 'Status', 'Time', 'User agent'], recentRows)}
 </body></html>`;
   }
 }
@@ -77,10 +95,7 @@ function isAuthorized(header: string | undefined, password: string): boolean {
   return timingSafeEqual(digest(given), digest(password));
 }
 
-function groupRows(
-  map: Map<string, GroupStats>,
-  withUserAgent: boolean,
-): string[][] {
+function groupRows(map: Map<string, GroupStats>): string[][] {
   return [...map]
     .sort(([, a], [, b]) => b.requests - a.requests)
     .map(([key, g]) => [
@@ -88,9 +103,6 @@ function groupRows(
       String(g.requests),
       String(g.errors),
       fmtDate(g.lastSeen),
-      withUserAgent
-        ? g.lastUserAgent
-        : `${(g.totalDurationMs / g.requests).toFixed(1)} ms`,
     ]);
 }
 
