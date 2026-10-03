@@ -10,6 +10,8 @@ export interface GenerateOptions {
   prompt: string;
   /** JSON schema; the response is then parsed and returned as an object. */
   jsonSchema?: object;
+  /** Inline files (PDF, images) sent before the prompt. */
+  files?: { mimeType: string; data: Buffer }[];
   timeoutMs?: number;
 }
 
@@ -17,8 +19,7 @@ export interface GenerateOptions {
 const TEXT_MODEL = () => process.env.LLM_MODEL || 'gemini-flash-latest';
 const EMBEDDING_MODEL = () =>
   process.env.EMBEDDING_MODEL || 'gemini-embedding-001';
-export const embeddingDims = () =>
-  Number(process.env.EMBEDDING_DIMS || 768);
+export const embeddingDims = () => Number(process.env.EMBEDDING_DIMS || 768);
 
 // gemini-embedding-001 accepts up to 100 texts per request, but the free
 // tier's per-minute token quota is smaller than 100 chunks; batches are also
@@ -53,28 +54,50 @@ export class GeminiService {
     return EMBEDDING_MODEL();
   }
 
-  async generate(opts: GenerateOptions & { jsonSchema: object }): Promise<unknown>;
+  async generate(
+    opts: GenerateOptions & { jsonSchema: object },
+  ): Promise<unknown>;
   async generate(opts: GenerateOptions): Promise<string>;
   async generate(opts: GenerateOptions): Promise<unknown> {
-    const models = [TEXT_MODEL(), ...FALLBACK_MODELS.filter((m) => m !== TEXT_MODEL())];
+    const models = [
+      TEXT_MODEL(),
+      ...FALLBACK_MODELS.filter((m) => m !== TEXT_MODEL()),
+    ];
     for (let i = 0; ; i++) {
       try {
         // Two attempts per model, then the next model.
         return await this.generateWith(models[Math.floor(i / 2)], opts);
       } catch (err) {
         const last = Math.floor(i / 2) >= models.length - 1 && i % 2 === 1;
-        if (!(err instanceof LlmUnavailableError) || !isTransient(err) || last) throw err;
+        if (!(err instanceof LlmUnavailableError) || !isTransient(err) || last)
+          throw err;
         await sleep((i % 2 === 0 ? 5 : 15) * 1000);
       }
     }
   }
 
-  private async generateWith(model: string, opts: GenerateOptions): Promise<unknown> {
+  private async generateWith(
+    model: string,
+    opts: GenerateOptions,
+  ): Promise<unknown> {
     const ai = this.ai();
     try {
       const response = await ai.models.generateContent({
         model,
-        contents: [{ role: 'user', parts: [{ text: opts.prompt }] }],
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              ...(opts.files ?? []).map((f) => ({
+                inlineData: {
+                  mimeType: f.mimeType,
+                  data: f.data.toString('base64'),
+                },
+              })),
+              { text: opts.prompt },
+            ],
+          },
+        ],
         config: {
           systemInstruction: opts.system,
           httpOptions: { timeout: opts.timeoutMs ?? 120_000 },
@@ -146,7 +169,10 @@ export class GeminiService {
     if (now - this.embedWindow.start >= 60_000) {
       this.embedWindow = { start: now, tokens: 0 };
     }
-    if (this.embedWindow.tokens > 0 && this.embedWindow.tokens + needed > limit) {
+    if (
+      this.embedWindow.tokens > 0 &&
+      this.embedWindow.tokens + needed > limit
+    ) {
       await sleep(60_000 - (now - this.embedWindow.start));
       this.embedWindow = { start: Date.now(), tokens: 0 };
     }
@@ -171,7 +197,9 @@ export class GeminiService {
 }
 
 function isTransient(err: unknown): boolean {
-  return /429|RESOURCE_EXHAUSTED|503|UNAVAILABLE|overloaded|high demand/i.test(String(err));
+  return /429|RESOURCE_EXHAUSTED|503|UNAVAILABLE|overloaded|high demand/i.test(
+    String(err),
+  );
 }
 
 /** Splits texts into requests of at most EMBED_BATCH texts and EMBED_BATCH_TOKENS tokens. */
@@ -180,7 +208,10 @@ export function batches(texts: string[]): string[][] {
   let current: string[] = [];
   let size = 0;
   for (const t of texts) {
-    if (current.length && (current.length >= EMBED_BATCH || size + tokens(t) > EMBED_BATCH_TOKENS)) {
+    if (
+      current.length &&
+      (current.length >= EMBED_BATCH || size + tokens(t) > EMBED_BATCH_TOKENS)
+    ) {
       out.push(current);
       current = [];
       size = 0;
