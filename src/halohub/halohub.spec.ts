@@ -20,6 +20,7 @@ const ENV = {
   PHONE_HASH_SALT: 'salt',
   PUBLIC_MIN_ZGLOSZEN: '2',
   GEMINI_API_KEY: '',
+  TRANSIT_GTFS_FEEDS: '',
 };
 
 function postCall(id: string, caller: string, problemy: object[], extra: object = {}) {
@@ -103,7 +104,7 @@ describe('Halo, Hub! API (MongoDB)', () => {
       type: 'conversation_initiation_client_data',
       dynamic_variables: {
         czy_powrot: 'tak',
-        poprzedni_kontekst: 'Jedzie z Dworca na HackYeah na wózku. Ostatni krok: Rondo Mogilskie. Trasa zakończona.',
+        poprzedni_kontekst: 'Rozmowa sprzed 1 min. Cel: HackYeah. Jedzie z Dworca na HackYeah na wózku. Ostatni krok: Rondo Mogilskie. Trasa zakończona.',
       },
     });
     const unknown = await request(server()).post('/halohub/webhooks/elevenlabs/init?key=init').send({ caller_id: '+48999' }).expect(200);
@@ -222,6 +223,20 @@ describe('Halo, Hub! API (MongoDB)', () => {
     await request(server()).delete('/halohub/api/demo').set(admin).expect(200);
     const after = (await request(server()).get('/halohub/api/metryki').set(admin).expect(200)).body;
     expect(after.rozmowy.razem).toBe(2);
+  });
+
+  it('lets the agent discard the previous context and answers transit without timetables', async () => {
+    const tool = { 'x-tool-secret': 'tool' };
+    const init = () => request(server()).post('/halohub/webhooks/elevenlabs/init').set('x-init-secret', 'init').send({ caller_id: '+48600300400' });
+    expect((await init().expect(200)).body.dynamic_variables.czy_powrot).toBe('tak');
+    await request(server()).post('/halohub/tools/kontekst_rozmowy').set(tool).send({ caller_id: '+48600300400', decyzja: 'kontynuacja' }).expect(200, { ok: true, decyzja: 'kontynuacja' });
+    expect((await init().expect(200)).body.dynamic_variables.czy_powrot).toBe('tak');
+    await request(server()).post('/halohub/tools/kontekst_rozmowy').set(tool).send({ caller_id: '+48600300400', decyzja: 'nowa_sprawa' }).expect(200, { ok: true, decyzja: 'nowa_sprawa', kontekst_usuniety: true });
+    expect((await init().expect(200)).body.dynamic_variables).toEqual({ czy_powrot: 'nie', poprzedni_kontekst: '' });
+
+    const t = await request(server()).post('/halohub/tools/znajdz_polaczenie').set(tool).send({ skad: 'Dworzec Główny', dokad: 'TAURON Arena' }).expect(200);
+    expect(t.body).toMatchObject({ polaczenia: [], komunikat: expect.stringContaining('niedostępny') });
+    await request(server()).post('/halohub/tools/znajdz_polaczenie').send({ skad: 'a', dokad: 'b' }).expect(401);
   });
 
   it('accepts unsigned post-call webhooks when no secret is configured', async () => {
