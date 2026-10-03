@@ -1,5 +1,7 @@
 # Halo, Hub! – wdrożenie (Coolify + ElevenLabs)
 
+Integracja agenta AI (adresy, payloady, kiedy co wysyłać): `polish-stonks-bot/AGENT.md`.
+
 Backend (`universal-backend`) i frontend (`polish-stonks-bot/web`) to dwie aplikacje w Coolify,
 plus jedna baza MongoDB. RAG, kontekst rozmów i cache są w MongoDB, więc Redis nie jest potrzebny.
 

@@ -124,8 +124,9 @@ export class IngestService {
         if (complete && !opts.limit) {
           stats[`${zrodlo}_deactivated`] = await this.rag.deactivateMissing(CORPUS, zrodlo, seen);
         }
+        // Per source, so an interrupted run still leaves searchable vectors.
+        stats.embedded_chunks = (stats.embedded_chunks ?? 0) + (await this.rag.embedMissing(CORPUS));
       }
-      stats.embedded_chunks = await this.rag.embedMissing(CORPUS);
     } catch (err) {
       failed = true;
       errors.push(String(err));
