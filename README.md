@@ -10,6 +10,7 @@ generic modules; each product is a domain module under its own route prefix.
 | `request-log/` | shared | `/stats` | request logs and a password-protected stats page |
 | `rag/` | generic feature | `/rag/:corpus/*` | multi-corpus RAG: chunking, Gemini embeddings, hybrid vector + full-text search (RRF) |
 | `transit/` | generic feature | `/transit`, `/transit/stops?q=`, `/transit/plan?skad=&dokad=` | journey planner on GTFS feeds (`TRANSIT_GTFS_FEEDS="id=url,…"`, default Kraków trams + buses; empty disables). Loaded in memory (~0.5 GB RSS for both Kraków feeds), refreshed every 12 h, cached in `DATA_DIR/gtfs` |
+| `places/` | generic feature | `/places?kategoria=&gdzie=&kuchnia=&wozek=`, `/places/providers` | restaurants, sights, toilets, pharmacies… near a stop or landmark: OpenStreetMap (Overpass + Nominatim, cached 6 h); Tripadvisor Content API (`TRIPADVISOR_API_KEY`) and Viator Partner API (`VIATOR_API_KEY`) when keys are set |
 | `escrow/` | domain | `/escrows/*` | Solana escrow dApp (SQLite in `DATA_DIR`) |
 | `halohub/` | domain | `/halohub/*` | "Halo, Hub!" voice guide for Kraków – see [docs/halohub-api.md](docs/halohub-api.md) |
 

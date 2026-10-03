@@ -78,6 +78,33 @@ export class TransitService implements OnApplicationBootstrap, OnApplicationShut
       .map((m) => ({ nazwa: m.name, slupki: m.stops.length, trafnosc: Math.round(m.score) }));
   }
 
+  /** Centre of the best-matching stop group, e.g. to search places nearby. */
+  locate(query: string): { name: string; lat: number; lon: number } | null {
+    if (!this.network) return null;
+    const best = matchStops(this.network, query).find((m) => m.score >= 40);
+    if (!best) return null;
+    const n = this.network;
+    const lat = best.stops.reduce((a, s) => a + n.stopLat[s], 0) / best.stops.length;
+    const lon = best.stops.reduce((a, s) => a + n.stopLon[s], 0) / best.stops.length;
+    return { name: best.name, lat, lon };
+  }
+
+  /** Nearest stop name to a point (straight line). */
+  nearestStop(lat: number, lon: number): { name: string; distanceM: number } | null {
+    const n = this.network;
+    if (!n) return null;
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < n.stopName.length; i++) {
+      const d = distanceM(lat, lon, n.stopLat[i], n.stopLon[i]);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best < 0 ? null : { name: n.stopName[best], distanceM: Math.round(bestD) };
+  }
+
   plan(from: string, to: string, at = new Date()) {
     const { date, yesterday, seconds } = localClock(at);
     return plan(this.require(), from, to, seconds, date, yesterday);
@@ -155,4 +182,13 @@ export class TransitService implements OnApplicationBootstrap, OnApplicationShut
       return new Uint8Array(await readFile(file));
     }
   }
+}
+
+/** Haversine distance in metres. */
+export function distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const r = (d: number) => (d * Math.PI) / 180;
+  const a =
+    Math.sin(r(lat2 - lat1) / 2) ** 2 +
+    Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lon2 - lon1) / 2) ** 2;
+  return 6_371_000 * 2 * Math.asin(Math.sqrt(a));
 }
