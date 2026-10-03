@@ -8,6 +8,9 @@ async function bootstrap() {
   // private addresses makes req.ip the real client IP without letting public
   // clients spoof it via X-Forwarded-For.
   app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+  // The dApp frontend is served from another origin; there are no cookies or
+  // credentials to protect, so any origin may call the API.
+  app.enableCors();
   await app.listen(process.env.PORT ?? 3000);
 }
 await bootstrap();
