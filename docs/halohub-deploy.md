@@ -27,7 +27,7 @@ plus jedna baza MongoDB. RAG, kontekst rozmów i cache są w MongoDB, więc Redi
 | `HALOHUB_CRON_SECRET` | sekret |
 | `HALOHUB_TOOL_SECRET` | sekret (wpisz w narzędziu ElevenLabs) |
 | `HALOHUB_INIT_SECRET` | sekret (webhook inicjacji) |
-| `ELEVENLABS_WEBHOOK_SECRET` | sekret HMAC z ElevenLabs (krok 4) |
+| `ELEVENLABS_WEBHOOK_SECRET` | opcjonalnie: sekret HMAC z ElevenLabs (krok 4); bez niego webhook po rozmowie przyjmuje niepodpisane żądania |
 | `ELEVENLABS_AGENT_ID` | id agenta (widget na stronie publicznej) |
 | `PHONE_HASH_SALT` | sekret – **nie zmieniaj po starcie**, inaczej kontekst i liczenie osób się rozjadą |
 | `INBOUND_NUMBER` | `+420910923449` |
