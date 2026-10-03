@@ -6,9 +6,10 @@ export function dot(a: ArrayLike<number>, b: ArrayLike<number>): number {
 }
 
 /**
- * Reciprocal Rank Fusion. Each ranking lists chunk owners (document ids)
- * best-first; a document gains 1 / (k + rank) for every position it holds in
- * every ranking, so documents with several matching chunks rank higher.
+ * Reciprocal Rank Fusion over document rankings. Each ranking lists chunk
+ * owners (document ids) best-first; only a document's best position in each
+ * ranking counts. Summing every chunk would let long documents (a library
+ * entry with an attached 60-page PDF) win every query.
  */
 export function reciprocalRankFusion(
   rankings: string[][],
@@ -16,9 +17,14 @@ export function reciprocalRankFusion(
 ): Map<string, number> {
   const scores = new Map<string, number>();
   for (const ranking of rankings) {
-    ranking.forEach((id, i) => {
-      scores.set(id, (scores.get(id) ?? 0) + 1 / (k + i + 1));
-    });
+    const seen = new Set<string>();
+    let rank = 0;
+    for (const id of ranking) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      rank++;
+      scores.set(id, (scores.get(id) ?? 0) + 1 / (k + rank));
+    }
   }
   return scores;
 }
