@@ -11,7 +11,7 @@ Domenowy moduł generycznego backendu (`universal-backend`). Wszystkie ścieżki
 | `/halohub/api/*` (panel urzędnika) | `Authorization: Bearer <token>` | `HALOHUB_ADMIN_TOKEN` |
 | `/halohub/jobs/*` | `x-cron-secret: <sekret>` **albo** jak panel | `HALOHUB_CRON_SECRET` |
 | `/halohub/tools/*` (ElevenLabs) | `x-tool-secret` | `HALOHUB_TOOL_SECRET` |
-| `/halohub/webhooks/elevenlabs` | `elevenlabs-signature` (HMAC) | `ELEVENLABS_WEBHOOK_SECRET` |
+| `/halohub/webhooks/elevenlabs` | `elevenlabs-signature` (HMAC) – tylko gdy zmienna ustawiona; bez niej webhook przyjmuje wszystko | `ELEVENLABS_WEBHOOK_SECRET` (opcjonalna) |
 | `/halohub/webhooks/elevenlabs/init` | `x-init-secret` | `HALOHUB_INIT_SECRET` |
 | `/halohub/public/*` | brak | – |
 
