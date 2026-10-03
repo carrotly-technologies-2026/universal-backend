@@ -56,15 +56,16 @@ export class TelephonyController {
     };
   }
 
-  /** Post-call webhook, HMAC-signed by ElevenLabs. */
+  /**
+   * Post-call webhook. With ELEVENLABS_WEBHOOK_SECRET set, only requests
+   * HMAC-signed by ElevenLabs are accepted; without it anyone may post
+   * (open by choice for the hackathon – fake calls then reach the stats).
+   */
   @Post('webhooks/elevenlabs')
   @HttpCode(200)
   async postCall(@Req() req: RawBodyRequest<Request>, @Body() body: unknown) {
     const secret = process.env.ELEVENLABS_WEBHOOK_SECRET;
-    if (!secret) {
-      throw new ServiceUnavailableException('Disabled: set ELEVENLABS_WEBHOOK_SECRET.');
-    }
-    if (!verifySignature(req.header('elevenlabs-signature'), req.rawBody, secret)) {
+    if (secret && !verifySignature(req.header('elevenlabs-signature'), req.rawBody, secret)) {
       throw new UnauthorizedException('Invalid signature.');
     }
     phoneSalt();

@@ -223,4 +223,16 @@ describe('Halo, Hub! API (MongoDB)', () => {
     const after = (await request(server()).get('/halohub/api/metryki').set(admin).expect(200)).body;
     expect(after.rozmowy.razem).toBe(2);
   });
+
+  it('accepts unsigned post-call webhooks when no secret is configured', async () => {
+    delete process.env.ELEVENLABS_WEBHOOK_SECRET;
+    try {
+      await request(server())
+        .post('/halohub/webhooks/elevenlabs')
+        .send(postCall('unsigned_1', '+48600999000', []))
+        .expect(200, { ok: true, bariery: 0 });
+    } finally {
+      process.env.ELEVENLABS_WEBHOOK_SECRET = ENV.ELEVENLABS_WEBHOOK_SECRET;
+    }
+  });
 });
