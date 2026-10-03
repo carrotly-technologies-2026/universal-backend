@@ -94,8 +94,8 @@ interface VectorIndex {
   vectors: Float32Array[];
 }
 
-// Candidates taken from each ranking before fusion.
-const CANDIDATES = 30;
+// Chunks taken from each ranking before fusion (several may belong to one document).
+const CANDIDATES = 80;
 
 export const contentHash = (d: RagDocumentInput): string =>
   createHash('sha256')
