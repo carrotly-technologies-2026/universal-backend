@@ -83,7 +83,7 @@ export class ConversationService {
     if (nowe.length) await bariery.insertMany(nowe as Bariera[]);
 
     if (telefonHash && !demo) {
-      await this.context.save(telefonHash, {
+      const ctx = {
         conversation_id: call.conversationId,
         cel_podrozy: rozmowa.cel_podrozy,
         typ_uzytkownika: rozmowa.typ_uzytkownika,
@@ -91,7 +91,22 @@ export class ConversationService {
         ostatni_krok: str(val('ostatni_krok'), 300),
         podsumowanie: str(val('kontekst_podsumowanie'), 1000),
         czy_dotarl: rozmowa.czy_dotarl,
-      });
+      };
+      const prev = await this.context.get(telefonHash);
+      const start = call.rozpoczeto?.getTime() ?? Date.now();
+      const koniec = start + (call.czasTrwaniaS ?? 0) * 1000;
+      if (!prev) await this.context.save(telefonHash, ctx);
+      else if (
+        prev.conversation_id !== call.conversationId &&
+        prev.zaktualizowano &&
+        prev.zaktualizowano.getTime() > koniec
+      ) {
+        // A later call already stored progress (redial before this webhook arrived).
+        await this.context.merge(telefonHash, ctx, { tylkoBraki: true });
+      } else if (prev.conversation_id === call.conversationId || call.czyPowrot) {
+        // Progress saved during this call, or a continuation of the previous one.
+        await this.context.merge(telefonHash, ctx);
+      } else await this.context.save(telefonHash, ctx);
     }
     return { rozmowaId, bariery: nowe.length };
   }
