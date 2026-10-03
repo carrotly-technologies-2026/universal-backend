@@ -6,6 +6,7 @@ import { EscrowModule } from './escrow/escrow.module.js';
 import { HalohubModule } from './halohub/halohub.module.js';
 import { LlmModule } from './llm/llm.module.js';
 import { RagModule } from './rag/rag.module.js';
+import { PlacesModule } from './places/places.module.js';
 import { TransitModule } from './transit/transit.module.js';
 import { RequestLogModule } from './request-log/request-log.module.js';
 
@@ -18,6 +19,7 @@ import { RequestLogModule } from './request-log/request-log.module.js';
     // Generic features
     RagModule,
     TransitModule,
+    PlacesModule,
     // Domains
     EscrowModule,
     HalohubModule,

@@ -19,6 +19,7 @@ import { ConversationService, phoneSalt } from './conversation.service.js';
 import { hashTelefonu, jezyk, parsePostCall, verifySignature } from './elevenlabs.js';
 import { KnowledgeService } from './knowledge.service.js';
 import { TransitService } from '../transit/transit.service.js';
+import { PlacesService } from '../places/places.service.js';
 
 /** Endpoints called by the ElevenLabs agent during and after a phone call. */
 @Controller('halohub')
@@ -28,6 +29,7 @@ export class TelephonyController {
     private readonly context: ContextService,
     private readonly knowledge: KnowledgeService,
     private readonly transit: TransitService,
+    private readonly places: PlacesService,
   ) {}
 
   /**
@@ -122,6 +124,36 @@ export class TelephonyController {
       };
     } catch (err) {
       return { polaczenia: [], komunikat: `Rozkład jest chwilowo niedostępny (${err instanceof Error ? err.message : 'błąd'}).` };
+    }
+  }
+
+  /**
+   * `polec_miejsca` tool: restaurants, sights, toilets, pharmacies… near a
+   * stop or landmark (OpenStreetMap; Tripadvisor ratings and Viator tours
+   * when keys are set). Never 500.
+   */
+  @Post('tools/polec_miejsca')
+  @HttpCode(200)
+  @UseGuards(new SecretGuard({ header: 'x-tool-secret', env: 'HALOHUB_TOOL_SECRET' }))
+  async polecMiejsca(@Body() body: unknown) {
+    const b = (body ?? {}) as Record<string, unknown>;
+    const s = (k: string, max: number) => (typeof b[k] === 'string' ? (b[k] as string).trim().slice(0, max) : null);
+    try {
+      await this.transit.ready();
+      const r = await this.places.search({
+        kategoria: s('kategoria', 40) ?? '',
+        gdzie: s('gdzie', 120),
+        kuchnia: s('kuchnia', 40),
+        dlaWozka: b.dla_wozka === true || b.dla_wozka === 'true',
+        limit: 3,
+      });
+      // Coordinates are for maps, not for speaking; keep the payload short.
+      return {
+        ...r,
+        miejsca: r.miejsca.map(({ lat: _lat, lon: _lon, ...m }) => m),
+      };
+    } catch (err) {
+      return { miejsca: [], wycieczki: [], zrodla: [], komunikat: `Wyszukiwarka miejsc chwilowo nie odpowiada (${err instanceof Error ? err.message : 'błąd'}).` };
     }
   }
 

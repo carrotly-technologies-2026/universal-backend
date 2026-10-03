@@ -10,6 +10,8 @@ export interface Network {
   /** Normalized name; stops with the same one form a transfer group. */
   stopNorm: string[];
   stopCode: string[];
+  stopLat: Float64Array | number[];
+  stopLon: Float64Array | number[];
   groups: Map<string, number[]>;
   tripRoute: string[];
   tripMode: ('tramwaj' | 'autobus' | 'inny')[];
@@ -106,6 +108,8 @@ export function buildNetwork(feeds: FeedFile[]): Network {
     stopName: [],
     stopNorm: [],
     stopCode: [],
+    stopLat: [],
+    stopLon: [],
     groups: new Map(),
     tripRoute: [],
     tripMode: [],
@@ -146,6 +150,8 @@ export function buildNetwork(feeds: FeedFile[]): Network {
       net.stopName.push(name);
       net.stopNorm.push(normalizeName(name));
       net.stopCode.push(r[col(st.header, 'stop_desc')] || r[col(st.header, 'platform_code')] || '');
+      (net.stopLat as number[]).push(Number(r[col(st.header, 'stop_lat')]));
+      (net.stopLon as number[]).push(Number(r[col(st.header, 'stop_lon')]));
     }
 
     const routes = new Map<string, { name: string; mode: Network['tripMode'][number] }>();
