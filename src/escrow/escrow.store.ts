@@ -111,7 +111,7 @@ export class EscrowStore implements OnModuleDestroy {
     return rows.map(toWaybill);
   }
 
-  /** Stores the file and its metadata; returns the stored row (first upload wins). */
+  /** Stores the file and its metadata; a re-upload only refreshes the validation. */
   saveWaybill(
     escrow: string,
     file: Buffer,
@@ -120,7 +120,10 @@ export class EscrowStore implements OnModuleDestroy {
     // Content-addressed, so rewriting an existing file is harmless.
     writeFileSync(this.filePath(w.hash), file);
     this.db
-      .prepare('INSERT OR IGNORE INTO waybills VALUES (?, ?, ?, ?, ?, ?)')
+      .prepare(
+        `INSERT INTO waybills VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (escrow, hash) DO UPDATE SET validation = excluded.validation`,
+      )
       .run(
         escrow,
         w.hash,
