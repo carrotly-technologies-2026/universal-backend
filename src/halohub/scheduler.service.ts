@@ -14,6 +14,7 @@ import { TopicsService } from './topics.service.js';
 const TICK_MS = 10 * 60_000;
 const HOUR_MS = 3_600_000;
 const WEEK_MS = 7 * 24 * HOUR_MS;
+const RETRY_MS = 5 * 60_000;
 
 const warsawHour = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Warsaw',
@@ -42,9 +43,19 @@ export class SchedulerService implements OnApplicationBootstrap, OnApplicationSh
     private readonly ingest: IngestService,
   ) {}
 
-  onApplicationBootstrap(): void {
+  async onApplicationBootstrap(): Promise<void> {
     if (process.env.HALOHUB_SCHEDULER !== 'true' || !this.mongo.enabled) return;
     this.logger.log('Halo, Hub! scheduler enabled.');
+    // A run still "trwa" at startup died with the previous process (deploys
+    // restart the app); mark it so the next tick resumes it.
+    try {
+      await (await this.store.ingest()).updateMany(
+        { status: 'trwa' },
+        { $set: { status: 'blad', koniec: new Date() }, $push: { bledy: 'Przerwany restartem aplikacji.' } },
+      );
+    } catch (err) {
+      this.logger.warn(`Could not close interrupted ingest runs: ${String(err)}`);
+    }
     setTimeout(() => void this.tick(), 30_000).unref();
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref();
@@ -93,8 +104,11 @@ export class SchedulerService implements OnApplicationBootstrap, OnApplicationSh
       .limit(1)
       .next();
     if (!last) return true;
-    // A run interrupted by a restart stays "trwa"; retry it after a day.
-    if (last.status === 'trwa') return now.getTime() - last.start.getTime() > 24 * HOUR_MS;
+    if (last.status === 'trwa') return false;
+    // Failed or interrupted: resume soon (unchanged documents are skipped).
+    if (last.status === 'blad') {
+      return now.getTime() - (last.koniec ?? last.start).getTime() > RETRY_MS;
+    }
     return now.getTime() - last.start.getTime() > WEEK_MS;
   }
 
