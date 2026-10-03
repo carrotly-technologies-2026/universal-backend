@@ -16,7 +16,8 @@ import { safeEqual } from '../common/secret.js';
 import { SecretGuard } from '../common/secret.guard.js';
 import { ContextService, dynamicVariables } from './context.service.js';
 import { ConversationService, phoneSalt } from './conversation.service.js';
-import { hashTelefonu, jezyk, parsePostCall, verifySignature } from './elevenlabs.js';
+import { bool, hashTelefonu, jezyk, parsePostCall, str, typUzytkownika, verifySignature } from './elevenlabs.js';
+import { Kontekst } from './model.js';
 import { KnowledgeService } from './knowledge.service.js';
 import { TransitService } from '../transit/transit.service.js';
 import { PlacesService } from '../places/places.service.js';
@@ -115,6 +116,11 @@ export class TelephonyController {
       await this.transit.ready();
       const r = this.transit.plan(skad, dokad, at);
       if ('blad' in r) return { polaczenia: [], komunikat: r.blad, podpowiedzi: r.podpowiedzi };
+      const best = r.polaczenia[0];
+      if (best) {
+        // Saved right away: a dropped call can be resumed before the post-call webhook arrives.
+        void this.zapisz(b, { cel_podrozy: dokad, ostatni_krok: `Zaplanowany przejazd z ${skad}: ${best.opis}` }, true);
+      }
       return {
         ...r,
         komunikat: r.polaczenia.length
@@ -155,6 +161,52 @@ export class TelephonyController {
     } catch (err) {
       return { miejsca: [], wycieczki: [], zrodla: [], komunikat: `Wyszukiwarka miejsc chwilowo nie odpowiada (${err instanceof Error ? err.message : 'błąd'}).` };
     }
+  }
+
+  /**
+   * `zapisz_postep` tool: the agent stores the caller's progress during the
+   * call (goal, last confirmed step), so a redial right after a dropped call
+   * continues where it stopped. Merged into the stored context.
+   */
+  @Post('tools/zapisz_postep')
+  @HttpCode(200)
+  @UseGuards(new SecretGuard({ header: 'x-tool-secret', env: 'HALOHUB_TOOL_SECRET' }))
+  async zapiszPostep(@Body() body: unknown) {
+    const b = (body ?? {}) as Record<string, unknown>;
+    const czyDotarl = bool(b.czy_dotarl);
+    const ok = await this.zapisz(b, {
+      cel_podrozy: str(b.cel, 200),
+      ostatni_krok: str(b.ostatni_krok, 300),
+      podsumowanie: str(b.podsumowanie, 1000),
+      typ_uzytkownika: typUzytkownika(b.typ_uzytkownika),
+      jezyk: jezyk(b.jezyk),
+      czy_dotarl: czyDotarl,
+    });
+    return ok ? { ok: true } : { ok: false, komunikat: 'Brak numeru dzwoniącego – kontynuuj rozmowę.' };
+  }
+
+  /** Merges progress into the caller's context; false without a caller id. */
+  private async zapisz(b: Record<string, unknown>, ctx: Partial<Kontekst>, tylkoBrakiCelu = false): Promise<boolean> {
+    const callerId = typeof b.caller_id === 'string' ? b.caller_id : '';
+    if (!callerId) return false;
+    const hash = hashTelefonu(callerId, phoneSalt());
+    const full: Kontekst = {
+      conversation_id: str(b.conversation_id, 100) ?? '',
+      cel_podrozy: null,
+      typ_uzytkownika: null,
+      jezyk: null,
+      ostatni_krok: null,
+      podsumowanie: null,
+      czy_dotarl: null,
+      ...ctx,
+    };
+    if (tylkoBrakiCelu) {
+      // A planned leg (e.g. to a stop near the goal) must not replace the caller's stated goal.
+      const prev = await this.context.get(hash);
+      if (prev?.cel_podrozy) full.cel_podrozy = null;
+    }
+    await this.context.merge(hash, full);
+    return true;
   }
 
   /**
