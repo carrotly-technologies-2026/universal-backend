@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { SecretGuard } from '../common/secret.guard.js';
+import { IdeasService, KROKI_KREATORA, KrokKreatora, Szkic } from './ideas.service.js';
 import { RopsService, Wiadomosc } from './rops.service.js';
 
 /** Fixed-window limit per client IP; the endpoints are public and call the LLM. */
@@ -47,8 +48,12 @@ const sourceList = (v?: string | string[]) => list(Array.isArray(v) ? v : v?.rep
 export class RopsController {
   private readonly askLimit = new RateLimit(Number(process.env.ROPS_ASK_LIMIT || 30), 10 * 60_000);
   private readonly searchLimit = new RateLimit(240, 10 * 60_000);
+  private readonly ideaLimit = new RateLimit(Number(process.env.ROPS_IDEA_LIMIT || 10), 10 * 60_000);
 
-  constructor(private readonly rops: RopsService) {}
+  constructor(
+    private readonly rops: RopsService,
+    private readonly ideas: IdeasService,
+  ) {}
 
   @Get('public/rops/facety')
   facety() {
@@ -86,6 +91,30 @@ export class RopsController {
           .slice(-10)
       : [];
     return this.rops.zapytaj(b.pytanie, historia);
+  }
+
+  /** Idea creator: body { typ, tytul, opis, istota, dla_kogo?, odbiorcy?, etap, kontakt?: { nazwa?, email }, zgoda?, jezyk? } */
+  @Post('public/rops/pomysly')
+  zglosPomysl(@Req() req: Request, @Body() body: unknown) {
+    this.ideaLimit.check(req.ip ?? '');
+    return this.ideas.zglos(body);
+  }
+
+  /** Idea creator assistant: body { krok: 'opis'|'istota'|'dla_kogo', szkic, pytanie?, jezyk? } */
+  @Post('public/rops/kreator/asystent')
+  @HttpCode(200)
+  asystentKreatora(@Req() req: Request, @Body() body: unknown) {
+    const b = (body ?? {}) as Record<string, unknown>;
+    if (!(KROKI_KREATORA as readonly unknown[]).includes(b.krok)) {
+      throw new BadRequestException(`krok must be one of: ${KROKI_KREATORA.join(', ')}.`);
+    }
+    this.askLimit.check(req.ip ?? '');
+    return this.ideas.podpowiedz({
+      krok: b.krok as KrokKreatora,
+      szkic: (b.szkic && typeof b.szkic === 'object' ? b.szkic : {}) as Szkic,
+      pytanie: typeof b.pytanie === 'string' ? b.pytanie : undefined,
+      jezyk: typeof b.jezyk === 'string' ? b.jezyk : undefined,
+    });
   }
 
   /** Voice line tool for the ROPS ElevenLabs agent. */

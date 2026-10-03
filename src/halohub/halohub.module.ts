@@ -6,6 +6,7 @@ import { ContextService } from './context.service.js';
 import { ConversationService } from './conversation.service.js';
 import { DemoService } from './demo.service.js';
 import { HalohubStore } from './halohub.store.js';
+import { IdeasService } from './ideas.service.js';
 import { IngestService } from './ingest/ingest.service.js';
 import { KnowledgeService } from './knowledge.service.js';
 import { MetricsService } from './metrics.service.js';
@@ -40,6 +41,7 @@ import { TopicsService } from './topics.service.js';
     SchedulerService,
     PipelineService,
     RopsService,
+    IdeasService,
   ],
   exports: [IngestService, TopicsService, ReportService, DemoService],
 })

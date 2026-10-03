@@ -328,6 +328,46 @@ describe('Halo, Hub! API (MongoDB)', () => {
     expect(v.wyniki[0]).toMatchObject({ tytul: 'Usługi społeczne w Małopolsce 2025', pliki: ['Raport (PDF)'] });
   });
 
+  it('idea creator: stores idea cards, lists them without contact data, assistant works without the LLM', async () => {
+    const fiszka = {
+      typ: 'pomysl',
+      tytul: 'Kody QR na przystankach',
+      opis: 'Naklejki z kodami QR, które czytają na głos rozkład jazdy dla seniorów.',
+      istota: 'Seniorzy z demencją gubią się na przystankach; kod QR prowadzi ich głosem.',
+      dla_kogo: 'Seniorzy i ich opiekunowie',
+      odbiorcy: ['Dla seniorów'],
+      etap: 'prototyp',
+      jezyk: 'pl',
+      kontakt: { nazwa: 'Fundacja Test', email: 'kontakt@example.org' },
+      zgoda: true,
+    };
+    const post = (body: object) => request(server()).post('/halohub/public/rops/pomysly').send(body);
+    const created = (await post(fiszka).expect(201)).body;
+    expect(created).toEqual({ id: expect.any(String), numer: expect.stringMatching(/^P-[0-9A-F]{6}$/), status: 'nowy' });
+    // Contact data needs consent; unknown stages and empty titles are rejected.
+    await post({ ...fiszka, zgoda: false }).expect(400);
+    await post({ ...fiszka, etap: 'x' }).expect(400);
+    await post({ ...fiszka, tytul: ' ' }).expect(400);
+    await post({ ...fiszka, kontakt: { email: 'not-an-email' } }).expect(400);
+    await post({ ...fiszka, typ: 'dobra_praktyka', kontakt: undefined, zgoda: undefined }).expect(201);
+
+    await request(server()).get('/halohub/api/pomysly').expect(401);
+    const list = (await request(server()).get('/halohub/api/pomysly').set(admin).expect(200)).body;
+    expect(list).toHaveLength(2);
+    expect(list[0]).toMatchObject({ typ: 'dobra_praktyka', ma_kontakt: false });
+    expect(list[1]).toMatchObject({ numer: created.numer, tytul: 'Kody QR na przystankach', etap: 'prototyp', odbiorcy: ['Dla seniorów'], ma_kontakt: true });
+    // The panel is open to everyone: contact data never leaves the database.
+    expect(JSON.stringify(list)).not.toContain('example.org');
+    expect(JSON.stringify(list)).not.toContain('Fundacja Test');
+
+    const ask = (body: object) => request(server()).post('/halohub/public/rops/kreator/asystent').send(body);
+    const tip = (await ask({ krok: 'istota', szkic: { tytul: fiszka.tytul, opis: fiszka.opis } }).expect(200)).body;
+    expect(tip).toMatchObject({ wskazowka: null, propozycja: null, model: null });
+    expect(tip.podobne.map((p: { tytul: string }) => p.tytul)).toContain('Kody QR dla seniorów');
+    expect((await ask({ krok: 'opis', szkic: {} }).expect(200)).body).toEqual({ wskazowka: null, propozycja: null, podobne: [], model: null });
+    await ask({ krok: 'x', szkic: {} }).expect(400);
+  });
+
   it('accepts unsigned post-call webhooks when no secret is configured', async () => {
     delete process.env.ELEVENLABS_WEBHOOK_SECRET;
     try {

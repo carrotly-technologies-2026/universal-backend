@@ -195,6 +195,30 @@ export interface IngestRun {
   bledy: string[];
 }
 
+/** Idea card ("fiszka") sent from the idea creator in the ROPS chat widget. */
+export const TYPY_POMYSLU = ['pomysl', 'dobra_praktyka'] as const;
+export type TypPomyslu = (typeof TYPY_POMYSLU)[number];
+export const ETAPY_POMYSLU = ['pomysl', 'prototyp', 'testy', 'wdrozone'] as const;
+export type EtapPomyslu = (typeof ETAPY_POMYSLU)[number];
+
+export interface Pomysl {
+  _id: ObjectId;
+  numer: string;
+  typ: TypPomyslu;
+  tytul: string;
+  opis: string;
+  istota: string;
+  dla_kogo: string;
+  /** ROPS library categories picked as the audience. */
+  odbiorcy: string[];
+  etap: EtapPomyslu;
+  /** Only stored with the author's consent; never returned by the API. */
+  kontakt: { nazwa: string | null; email: string } | null;
+  jezyk: string | null;
+  status: 'nowy';
+  utworzono: Date;
+}
+
 export const WERSJA_DEFINICJI = '1';
 
 /** Corpus name of the hubMI / ROPS knowledge in the generic RAG store. */

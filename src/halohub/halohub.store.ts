@@ -5,6 +5,7 @@ import {
   Bariera,
   IngestRun,
   Kontekst,
+  Pomysl,
   Publikacja,
   Raport,
   Rozmowa,
@@ -84,6 +85,12 @@ export class HalohubStore {
   ingest() {
     return this.mongo.collection<IngestRun>('halohub_ingest', [
       { key: { start: -1 } },
+    ]);
+  }
+
+  pomysly() {
+    return this.mongo.collection<Pomysl>('halohub_pomysly', [
+      { key: { utworzono: -1 } },
     ]);
   }
 }

@@ -83,7 +83,7 @@ export function plikiDokumentu(source: string, url: string, meta: Record<string,
   return [...new Set([...pdfs, ...own])].map((u) => ({ nazwa: fileName(u), url: u }));
 }
 
-function toWynik(h: RagHit): WynikRops {
+export function toWynik(h: RagHit): WynikRops {
   return {
     id: h.documentId,
     tytul: h.title,

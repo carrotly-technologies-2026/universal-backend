@@ -14,6 +14,7 @@ import { bearer } from '../common/secret.js';
 import { SecretGuard } from '../common/secret.guard.js';
 import { ConversationService } from './conversation.service.js';
 import { DemoService } from './demo.service.js';
+import { IdeasService } from './ideas.service.js';
 import { IngestService } from './ingest/ingest.service.js';
 import { MetricsService, parseOkres } from './metrics.service.js';
 import { JEZYKI_RAPORTU, JezykRaportu } from './model.js';
@@ -37,6 +38,7 @@ export class PanelController {
     private readonly conversations: ConversationService,
     private readonly demo: DemoService,
     private readonly pipeline: PipelineService,
+    private readonly ideas: IdeasService,
   ) {}
 
   @Get('pipeline')
@@ -85,6 +87,12 @@ export class PanelController {
   @Get('wiedza/luki')
   luki(@Query('od') od?: string, @Query('do') to?: string) {
     return this.metrics.luki(parseOkres(od, to, 30));
+  }
+
+  /** Idea cards from the idea creator, newest first, without contact data. */
+  @Get('pomysly')
+  pomysly(@Query('limit') limit?: string) {
+    return this.ideas.lista(Math.min(Math.max(Number(limit) || 100, 1), 500));
   }
 
   @Get('raporty/najnowszy')
