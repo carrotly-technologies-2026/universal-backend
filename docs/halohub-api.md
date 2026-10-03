@@ -64,6 +64,8 @@ Na produkcji joby odpala wbudowany harmonogram (`HALOHUB_SCHEDULER=true`).
 | POST | `/halohub/webhooks/elevenlabs/init` | webhook inicjacji rozmowy (Twilio); body `{ caller_id, ... }` → `{ type: 'conversation_initiation_client_data', dynamic_variables: { czy_powrot, poprzedni_kontekst } }` |
 | POST | `/halohub/webhooks/elevenlabs` | webhook po rozmowie (`post_call_transcription`) |
 | POST | `/halohub/tools/szukaj_wiedzy` | narzędzie agenta; body `{ pytanie, grupa?, conversation_id?, jezyk? }` → `{ wyniki: { tytul, glos_streszczenie, kontakt, url, zrodlo }[], komunikat: string \| null }` |
+| POST | `/halohub/tools/znajdz_polaczenie` | narzędzie agenta; body `{ skad, dokad, kiedy? ("HH:MM") }` → `{ skad[], dokad[], polaczenia: { odjazd, przyjazd, za_min, czas_min, przesiadki, odcinki: { linia, rodzaj, kierunek, z, z_slupek, odjazd, do, przyjazd, przystankow }[], opis }[], nastepne_odjazdy[], komunikat, zrodlo }` – rozkład ZTP Kraków (GTFS), najbliższe 90 min, bez lub z jedną przesiadką |
+| POST | `/halohub/tools/kontekst_rozmowy` | narzędzie agenta; body `{ caller_id, decyzja: 'kontynuacja' \| 'nowa_sprawa' }` – `nowa_sprawa` usuwa zapisany kontekst dzwoniącego |
 
 ## Typy
 

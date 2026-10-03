@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { RagModule } from '../rag/rag.module.js';
+import { TransitModule } from '../transit/transit.module.js';
 import { ContextService } from './context.service.js';
 import { ConversationService } from './conversation.service.js';
 import { DemoService } from './demo.service.js';
@@ -21,7 +22,7 @@ import { TopicsService } from './topics.service.js';
  * routes live under /halohub.
  */
 @Module({
-  imports: [RagModule],
+  imports: [RagModule, TransitModule],
   controllers: [TelephonyController, PanelController, JobsController, PublicController],
   providers: [
     HalohubStore,
