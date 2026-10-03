@@ -1,5 +1,5 @@
-import { ApiError, FinishReason, GoogleGenAI } from '@google/genai';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { GeminiService } from '../llm/gemini.service.js';
 import { EscrowDetails } from './details.js';
 import { WaybillMimeType } from './file-type.js';
 
@@ -21,9 +21,6 @@ export interface WaybillInput {
   details: EscrowDetails | null;
   escrowCreatedAt: number;
 }
-
-// Alias that tracks the current Flash model, which is available on the free tier.
-const MODEL = 'gemini-flash-latest';
 
 const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] };
 
@@ -67,53 +64,22 @@ reasons: 1–5 short sentences in Polish explaining the verdict for a non-techni
 /** Advisory LLM check of a waybill. Never throws: failures become 'unavailable'. */
 @Injectable()
 export class WaybillValidator {
-  private readonly logger = new Logger(WaybillValidator.name);
+  constructor(private readonly gemini: GeminiService) {}
 
   async validate(input: WaybillInput): Promise<WaybillValidation> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    if (!this.gemini.available) {
       return unavailable('Walidacja niedostępna: brak klucza API do modelu.');
     }
     try {
-      const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: 120_000 } });
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: input.mimeType,
-                  data: input.file.toString('base64'),
-                },
-              },
-              { text: context(input) },
-            ],
-          },
-        ],
-        config: {
-          systemInstruction: SYSTEM,
-          responseMimeType: 'application/json',
-          responseJsonSchema: SCHEMA,
-        },
-      });
-      if (response.promptFeedback?.blockReason) {
-        return unavailable('Model odmówił oceny tego dokumentu.');
-      }
-      const finish = response.candidates?.[0]?.finishReason;
-      if (finish === FinishReason.MAX_TOKENS) {
-        return unavailable('Odpowiedź modelu została ucięta.');
-      }
-      if (finish && finish !== FinishReason.STOP) {
-        return unavailable('Model odmówił oceny tego dokumentu.');
-      }
-      if (!response.text) return unavailable('Model nie zwrócił oceny.');
-      return JSON.parse(response.text) as WaybillValidation;
+      // The shared client retries overload/rate-limit errors and falls back to
+      // a lighter model, which the free tier needs at peak times.
+      return (await this.gemini.generate({
+        system: SYSTEM,
+        prompt: context(input),
+        files: [{ mimeType: input.mimeType, data: input.file }],
+        jsonSchema: SCHEMA,
+      })) as WaybillValidation;
     } catch (err) {
-      this.logger.warn(`Waybill validation failed: ${String(err)}`);
-      // Surface the provider's reason (status + message, never the key) so a
-      // misconfiguration is visible in the UI, not only in server logs.
       return unavailable(
         `Walidacja niedostępna: błąd modelu (${describeProviderError(err)}).`,
       );
@@ -121,12 +87,12 @@ export class WaybillValidator {
   }
 }
 
+/** Provider status and message (never the key), so problems are visible in the UI. */
 function describeProviderError(err: unknown): string {
-  if (err instanceof ApiError) {
-    const reason = /"message"\s*:\s*"([^"]+)"/.exec(err.message)?.[1];
-    return `HTTP ${err.status}: ${reason ?? err.message}`.slice(0, 200);
-  }
-  return (err instanceof Error ? err.message : String(err)).slice(0, 200);
+  const text = err instanceof Error ? err.message : String(err);
+  const code = /"code"\s*:\s*(\d{3})/.exec(text)?.[1];
+  const message = /"message"\s*:\s*"([^"]+)"/.exec(text)?.[1];
+  return (code ? `HTTP ${code}: ${message ?? text}` : text).slice(0, 200);
 }
 
 function unavailable(reason: string): WaybillValidation {
