@@ -57,6 +57,40 @@ $ yarn run test:e2e
 $ yarn run test:cov
 ```
 
+## Escrow API
+
+Backend for the Solana escrow dApp (`escrow-dapp/docs/DESIGN.md`). It holds no keys and signs
+nothing: it stores the item/recipient description and the seller's waybill, and runs an
+advisory LLM check of the waybill. Instead of user auth, data is accepted only when its
+SHA-256 matches the hash stored in the on-chain escrow account.
+
+| Env | Default | Purpose |
+|---|---|---|
+| `ESCROW_PROGRAM_ID` | — (required; escrow endpoints return 503 without it) | Program that must own escrow accounts |
+| `SOLANA_RPC_URL` | `https://api.devnet.solana.com` | JSON-RPC endpoint |
+| `ANTHROPIC_API_KEY` | — | Waybill validation; without it the verdict is `unavailable` |
+| `DATA_DIR` | `./data` | `escrow.db` (SQLite) and `waybills/<sha256>` files; mount a volume in production |
+
+`:address` is the escrow account (base58, 32 bytes; 400 otherwise). Endpoints return 404 if
+the account does not exist or is not an escrow owned by `ESCROW_PROGRAM_ID`.
+
+- `GET /escrows/:address` — `{address, onChain, details, waybills}`; `onChain` is the decoded
+  account (`amount`/`escrowId` as strings, hashes as hex, `statusName`), each waybill has
+  `{hash, mimeType, size, uploadedAt, validation, committedOnChain}`.
+- `POST /escrows/:address/details` — JSON `{itemTitle, recipientName, recipientAddress}`
+  (non-empty, max 200 chars each). Fields are trimmed, then
+  `sha256(itemTitle + "\n" + recipientName + "\n" + recipientAddress)` (UTF-8) must equal the
+  on-chain `details_hash` (400 otherwise). **The frontend must hash the same trimmed strings.**
+- `POST /escrows/:address/waybills` — multipart field `file`: PDF, JPEG or PNG (detected by
+  content), max 10 MB. 409 unless the escrow is `Funded`. Returns
+  `{hash, validation}`; `hash` is what the seller signs in `mark_shipped`. Re-uploading the
+  same file returns the stored result.
+- `GET /escrows/:address/waybills/:hash` — the waybill file.
+
+`validation` is `{verdict: 'valid' | 'suspicious' | 'invalid', carrier, trackingNumber,
+recipientName, recipientAddress, shipDate, reasons}` (nullable strings, `reasons` in Polish),
+or `{verdict: 'unavailable', reasons}` when the model could not be used. It is advisory only.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
