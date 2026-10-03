@@ -1,5 +1,6 @@
 import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
+import { ansiClient } from './client-color.js';
 import { locate } from './geo.js';
 import { RequestStatsService } from './request-stats.service.js';
 
@@ -34,14 +35,23 @@ export class RequestLoggerMiddleware implements NestMiddleware {
 
       // e.g. 203.0.113.7 (PL, Kraków)  GET /users?page=2 → 200  3.1ms  "Mozilla/5.0 ..."
       const referer = req.headers.referer ? `  ref=${req.headers.referer}` : '';
+      const level =
+        entry.status >= 500 || !entry.completed
+          ? 'error'
+          : entry.status >= 400
+            ? 'warn'
+            : 'log';
+      // Nest colors the message per level (red/yellow/green); resume it after the IP.
+      const levelAnsi = {
+        error: '\x1b[31m',
+        warn: '\x1b[33m',
+        log: '\x1b[32m',
+      }[level];
       const line =
-        `${entry.ip} (${entry.location})  ${entry.method} ${entry.url} → ${entry.status}` +
+        `${ansiClient(entry.ip, levelAnsi)} (${entry.location})  ${entry.method} ${entry.url} → ${entry.status}` +
         `${entry.completed ? '' : ' ABORTED'}  ${durationMs.toFixed(1)}ms` +
         `  "${entry.userAgent}"${referer}`;
-
-      if (entry.status >= 500 || !entry.completed) this.logger.error(line);
-      else if (entry.status >= 400) this.logger.warn(line);
-      else this.logger.log(line);
+      this.logger[level](line);
     });
 
     next();

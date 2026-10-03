@@ -1,6 +1,7 @@
 import { Controller, Get, Header, Req, Res } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { cssClient } from './client-color.js';
 import { locate } from './geo.js';
 import { GroupStats, RequestStatsService } from './request-stats.service.js';
 
@@ -34,7 +35,7 @@ export class StatsController {
       .sort(([a], [b]) => a - b)
       .map(([status, count]) => [String(status), String(count)]);
     const ipRows = groupRows(s.byIp).map(([ip, ...rest]) => [
-      ip,
+      badge(ip),
       locate(ip).label,
       ...rest,
       s.byIp.get(ip)!.lastUserAgent,
@@ -49,7 +50,7 @@ export class StatsController {
     });
     const recentRows = s.recent.map((e) => [
       fmtDate(e.time),
-      e.ip,
+      badge(e.ip),
       e.location,
       `${e.method} ${e.url}`,
       e.completed ? String(e.status) : `${e.status} aborted`,
@@ -68,6 +69,7 @@ export class StatsController {
   th { background: #f3f3f3; position: sticky; top: 0; }
   td { word-break: break-all; }
   .muted { color: #777; }
+  .badge { padding: 1px 6px; border-radius: 4px; color: #111; font-family: ui-monospace, monospace; white-space: nowrap; }
 </style></head><body>
 <h1>Request stats</h1>
 <p>${s.total} requests since ${fmtDate(s.startedAt)} (UTC) · ${s.byIp.size} IPs · ${s.byCountry.size} countries · ${s.byRoute.size} routes
@@ -95,6 +97,19 @@ function isAuthorized(header: string | undefined, password: string): boolean {
   return timingSafeEqual(digest(given), digest(password));
 }
 
+/** A table cell: plain text, or text shown as a colored badge. */
+type Cell = string | { badge: string; color: string };
+
+function badge(client: string): Cell {
+  return { badge: client, color: cssClient(client) };
+}
+
+function cell(c: Cell): string {
+  if (typeof c === 'string') return `<td>${escape(c)}</td>`;
+  // color comes from our own palette, never from request data.
+  return `<td><span class="badge" style="background:${c.color}">${escape(c.badge)}</span></td>`;
+}
+
 function groupRows(map: Map<string, GroupStats>): string[][] {
   return [...map]
     .sort(([, a], [, b]) => b.requests - a.requests)
@@ -106,12 +121,10 @@ function groupRows(map: Map<string, GroupStats>): string[][] {
     ]);
 }
 
-function table(headers: string[], rows: string[][]): string {
+function table(headers: string[], rows: Cell[][]): string {
   if (rows.length === 0) return '<p class="muted">No data yet.</p>';
   const head = headers.map((h) => `<th>${escape(h)}</th>`).join('');
-  const body = rows
-    .map((r) => `<tr>${r.map((c) => `<td>${escape(c)}</td>`).join('')}</tr>`)
-    .join('\n');
+  const body = rows.map((r) => `<tr>${r.map(cell).join('')}</tr>`).join('\n');
   return `<table><thead><tr>${head}</tr></thead><tbody>\n${body}\n</tbody></table>`;
 }
 

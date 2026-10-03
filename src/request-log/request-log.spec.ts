@@ -55,6 +55,9 @@ describe('Request logging and stats', () => {
       .expect(200);
     expect(res.text).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(res.text).not.toContain('<script>');
+    expect(res.text).toMatch(
+      /class="badge" style="background:hsl\(\d+ 75% 82%\)"/,
+    );
   });
 
   it('is disabled without STATS_PASSWORD', async () => {
