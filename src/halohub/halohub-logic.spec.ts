@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { ObjectId } from 'mongodb';
 import { readFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import {
 } from './elevenlabs.js';
 import { parseRobots } from './ingest/fetcher.js';
 import { documentLinks, entryLinks, parseEntry } from './ingest/parse.js';
+import { KnowledgeService } from './knowledge.service.js';
 import { computeMetrics } from './metrics.js';
 import { BarieraDoTematu, normalizujMiejsce, wyliczTematy } from './priority.js';
 import { flattenMetrics } from './public.controller.js';
@@ -237,5 +239,26 @@ describe('extractive summary', () => {
     expect(
       extractiveSummary('1. Na czym polega rozwiązanie?\n\nInnowacja dostarcza seniorom naklejki z kodami QR na ubrania. Po zeskanowaniu widać dane kontaktowe. Trzecie zdanie.'),
     ).toBe('Innowacja dostarcza seniorom naklejki z kodami QR na ubrania. Po zeskanowaniu widać dane kontaktowe.');
+  });
+});
+
+describe('KnowledgeService.innowacje', () => {
+  const hit = (title: string) =>
+    ({ title, summary: `${title}.`, snippet: '', contact: null, url: `https://x/${title}`, source: 'biblioteka' }) as never;
+
+  it('keeps only the candidates the LLM judges relevant', async () => {
+    const rag = { search: vi.fn().mockResolvedValue([hit('gra planszowa'), hit('asystent w tramwaju'), hit('teleasystent')]) };
+    const gemini = { available: true, generate: vi.fn().mockResolvedValue({ pasujace: [1, 7] }) };
+    const k = new KnowledgeService(rag as never, {} as never, gemini as never);
+    const out = await k.innowacje('Komunikacja miejska. Tramwaj z wysoką podłogą');
+    expect(out.map((i) => i.tytul)).toEqual(['asystent w tramwaju']);
+    expect(rag.search.mock.calls[0][2].k).toBe(9);
+  });
+
+  it('returns nothing when no candidate fits', async () => {
+    const rag = { search: vi.fn().mockResolvedValue([hit('gra planszowa')]) };
+    const gemini = { available: true, generate: vi.fn().mockResolvedValue({ pasujace: [] }) };
+    const k = new KnowledgeService(rag as never, {} as never, gemini as never);
+    expect(await k.innowacje('Brak windy')).toEqual([]);
   });
 });
