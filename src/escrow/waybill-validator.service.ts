@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { FinishReason, GoogleGenAI } from '@google/genai';
 import { Injectable, Logger } from '@nestjs/common';
 import { EscrowDetails } from './details.js';
 import { WaybillMimeType } from './file-type.js';
@@ -22,7 +22,8 @@ export interface WaybillInput {
   escrowCreatedAt: number;
 }
 
-const MODEL = 'claude-opus-5-5';
+// Alias that tracks the current Flash model, which is available on the free tier.
+const MODEL = 'gemini-flash-latest';
 
 const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] };
 
@@ -69,40 +70,46 @@ export class WaybillValidator {
   private readonly logger = new Logger(WaybillValidator.name);
 
   async validate(input: WaybillInput): Promise<WaybillValidation> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return unavailable('Walidacja niedostępna: brak klucza API do modelu.');
     }
     try {
-      const client = new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 });
-      const response = await client.beta.messages.create({
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: 120_000 } });
+      const response = await ai.models.generateContent({
         model: MODEL,
-        max_tokens: 16000,
-        // Retries a safety-classifier decline on another model instead of
-        // leaving the upload without a verdict.
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: {
-          effort: 'medium',
-          format: { type: 'json_schema', schema: SCHEMA },
-        },
-        system: SYSTEM,
-        messages: [
+        contents: [
           {
             role: 'user',
-            content: [fileBlock(input), { type: 'text', text: context(input) }],
+            parts: [
+              {
+                inlineData: {
+                  mimeType: input.mimeType,
+                  data: input.file.toString('base64'),
+                },
+              },
+              { text: context(input) },
+            ],
           },
         ],
+        config: {
+          systemInstruction: SYSTEM,
+          responseMimeType: 'application/json',
+          responseJsonSchema: SCHEMA,
+        },
       });
-      if (response.stop_reason === 'refusal') {
+      if (response.promptFeedback?.blockReason) {
         return unavailable('Model odmówił oceny tego dokumentu.');
       }
-      if (response.stop_reason === 'max_tokens') {
+      const finish = response.candidates?.[0]?.finishReason;
+      if (finish === FinishReason.MAX_TOKENS) {
         return unavailable('Odpowiedź modelu została ucięta.');
       }
-      const text = response.content.find((b) => b.type === 'text');
-      if (!text) return unavailable('Model nie zwrócił oceny.');
-      return JSON.parse(text.text) as WaybillValidation;
+      if (finish && finish !== FinishReason.STOP) {
+        return unavailable('Model odmówił oceny tego dokumentu.');
+      }
+      if (!response.text) return unavailable('Model nie zwrócił oceny.');
+      return JSON.parse(response.text) as WaybillValidation;
     } catch (err) {
       this.logger.warn(`Waybill validation failed: ${String(err)}`);
       return unavailable('Walidacja niedostępna: błąd połączenia z modelem.');
@@ -112,23 +119,6 @@ export class WaybillValidator {
 
 function unavailable(reason: string): WaybillValidation {
   return { verdict: 'unavailable', reasons: [reason] };
-}
-
-function fileBlock({
-  file,
-  mimeType,
-}: WaybillInput): Anthropic.Beta.BetaContentBlockParam {
-  const data = file.toString('base64');
-  if (mimeType === 'application/pdf') {
-    return {
-      type: 'document',
-      source: { type: 'base64', media_type: mimeType, data },
-    };
-  }
-  return {
-    type: 'image',
-    source: { type: 'base64', media_type: mimeType, data },
-  };
 }
 
 function context({ details, escrowCreatedAt }: WaybillInput): string {

@@ -68,7 +68,7 @@ SHA-256 matches the hash stored in the on-chain escrow account.
 |---|---|---|
 | `ESCROW_PROGRAM_ID` | — (required; escrow endpoints return 503 without it) | Program that must own escrow accounts |
 | `SOLANA_RPC_URL` | `https://api.devnet.solana.com` | JSON-RPC endpoint |
-| `ANTHROPIC_API_KEY` | — | Waybill validation; without it the verdict is `unavailable` |
+| `GEMINI_API_KEY` | — | Waybill validation (Gemini, free tier key from aistudio.google.com); without it the verdict is `unavailable` |
 | `DATA_DIR` | `./data` | `escrow.db` (SQLite) and `waybills/<sha256>` files; mount a volume in production |
 
 `:address` is the escrow account (base58, 32 bytes; 400 otherwise). Endpoints return 404 if
