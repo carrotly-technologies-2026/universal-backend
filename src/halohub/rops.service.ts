@@ -204,7 +204,7 @@ export class RopsService {
 
   /** Voice line tool: short results to read out, all sources. */
   async dlaGlosu(pytanie: string) {
-    const hits = await this.rag.search(CORPUS, pytanie.trim().slice(0, 300), { k: 3, embedTimeoutMs: 1500 });
+    const hits = await this.rag.search(CORPUS, pytanie.trim().slice(0, 300), { k: 3, embedTimeoutMs: Number(process.env.RAG_EMBED_TIMEOUT_MS || 3000) });
     void this.log(pytanie, hits.map(toWynik));
     return {
       wyniki: hits.map((h) => {
