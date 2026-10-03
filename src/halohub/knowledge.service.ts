@@ -98,7 +98,7 @@ export class KnowledgeService {
       // Documents tagged "inny" apply to everyone (PLAN.md 8.1).
       tags: grupa ? [grupa, 'inny'] : undefined,
       sources,
-      embedTimeoutMs: 1200,
+      embedTimeoutMs: Number(process.env.RAG_EMBED_TIMEOUT_MS || 3000),
     });
     const wyniki = hits.map(toWynik);
     const ttl = Number(process.env.RAG_CACHE_TTL_S || 3600);
