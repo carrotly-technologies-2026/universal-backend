@@ -9,6 +9,8 @@ export interface RequestEntry {
   completed: boolean;
   durationMs: number;
   ip: string;
+  country: string;
+  location: string;
   userAgent: string;
 }
 
@@ -31,6 +33,7 @@ export class RequestStatsService {
   readonly startedAt = new Date();
   readonly byIp = new Map<string, GroupStats>();
   readonly byRoute = new Map<string, GroupStats>();
+  readonly byCountry = new Map<string, GroupStats>();
   readonly byStatus = new Map<number, number>();
   readonly recent: RequestEntry[] = [];
   total = 0;
@@ -39,6 +42,7 @@ export class RequestStatsService {
     this.total++;
     this.bump(this.byIp, entry.ip, entry);
     this.bump(this.byRoute, `${entry.method} ${entry.path}`, entry);
+    this.bump(this.byCountry, entry.country, entry);
     this.byStatus.set(entry.status, (this.byStatus.get(entry.status) ?? 0) + 1);
     this.recent.unshift(entry);
     if (this.recent.length > RECENT_LIMIT) this.recent.pop();

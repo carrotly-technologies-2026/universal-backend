@@ -34,6 +34,8 @@ describe('Request logging and stats', () => {
       userAgent: 'test-agent',
       status: 200,
     });
+    // Loopback has no geo data.
+    expect(stats.recent[0]).toMatchObject({ country: '-', location: '-' });
   });
 
   it('requires the password and escapes rendered values', async () => {
