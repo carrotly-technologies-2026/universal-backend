@@ -63,6 +63,8 @@ export interface SearchOptions {
   /** Only documents having at least one of these tags. */
   tags?: string[];
   sources?: string[];
+  /** Only documents in one of these categories. */
+  categories?: string[];
   /** Give up on the vector half after this long and use text search only. */
   embedTimeoutMs?: number;
 }
@@ -76,6 +78,7 @@ export interface RagHit {
   tags: string[];
   summary: string | null;
   contact: string | null;
+  meta: Record<string, unknown>;
   snippet: string;
   score: number;
 }
@@ -333,8 +336,9 @@ export class RagService {
     const docs = await this.documents();
     const found = await docs
       .find({
-        _id: { $in: ranked.slice(0, k * 3).map(([id]) => new ObjectId(id)) },
+        _id: { $in: ranked.slice(0, opts.categories?.length ? k * 8 : k * 3).map(([id]) => new ObjectId(id)) },
         active: true,
+        ...(opts.categories?.length && { category: { $in: opts.categories } }),
       })
       .toArray();
     const byId = new Map(found.map((d) => [d._id.toHexString(), d]));
@@ -352,6 +356,7 @@ export class RagService {
           tags: d.tags,
           summary: d.summary ?? null,
           contact: d.contact ?? null,
+          meta: d.meta ?? {},
           snippet: (snippets.get(id) ?? '').slice(0, 600),
           score,
         };
@@ -397,6 +402,35 @@ export class RagService {
       embeddingDims: meta?.embeddingDims ?? null,
       lastFetchedAt: last?.fetchedAt ?? null,
     };
+  }
+
+  /** Document counts per source and per category (for search filters). */
+  async facets(corpus: string) {
+    const docs = await this.documents();
+    const [sources, categories] = await Promise.all([
+      docs.aggregate<{ _id: string; n: number }>([{ $match: { corpus, active: true } }, { $group: { _id: '$source', n: { $sum: 1 } } }, { $sort: { n: -1 } }]).toArray(),
+      docs.aggregate<{ _id: string | null; n: number }>([{ $match: { corpus, active: true } }, { $group: { _id: '$category', n: { $sum: 1 } } }, { $sort: { n: -1 } }]).toArray(),
+    ]);
+    return {
+      sources: sources.map((s) => ({ value: s._id, count: s.n })),
+      categories: categories.filter((c) => c._id).map((c) => ({ value: c._id!, count: c.n })),
+    };
+  }
+
+  /** Browse active documents without a query, newest first. */
+  async browse(corpus: string, opts: { sources?: string[]; categories?: string[]; limit: number; offset: number }) {
+    const docs = await this.documents();
+    const filter = {
+      corpus,
+      active: true,
+      ...(opts.sources?.length && { source: { $in: opts.sources } }),
+      ...(opts.categories?.length && { category: { $in: opts.categories } }),
+    };
+    const [items, total] = await Promise.all([
+      docs.find(filter, { projection: { hash: 0 } }).sort({ title: 1 }).skip(opts.offset).limit(opts.limit).toArray(),
+      docs.countDocuments(filter),
+    ]);
+    return { items, total };
   }
 
   async listDocuments(corpus: string, source?: string, limit = 100) {
