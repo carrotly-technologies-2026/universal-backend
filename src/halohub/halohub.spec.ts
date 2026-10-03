@@ -104,7 +104,8 @@ describe('Halo, Hub! API (MongoDB)', () => {
       type: 'conversation_initiation_client_data',
       dynamic_variables: {
         czy_powrot: 'tak',
-        poprzedni_kontekst: 'Rozmowa sprzed 1 min. Cel: HackYeah. Jedzie z Dworca na HackYeah na wózku. Ostatni krok: Rondo Mogilskie. Trasa zakończona.',
+        poprzedni_kontekst: 'Rozmowa sprzed 1 min. Cel: HackYeah. Rozmówca: wózek. Język poprzedniej rozmowy: pl. Jedzie z Dworca na HackYeah na wózku. Ostatni krok: Rondo Mogilskie. Trasa zakończona.',
+        powitanie: 'Dzień dobry, tu znowu MayAI z Halo, Hub!. Słucham, w czym mogę pomóc?',
       },
     });
     const unknown = await request(server()).post('/halohub/webhooks/elevenlabs/init?key=init').send({ caller_id: '+48999' }).expect(200);
@@ -232,11 +233,72 @@ describe('Halo, Hub! API (MongoDB)', () => {
     await request(server()).post('/halohub/tools/kontekst_rozmowy').set(tool).send({ caller_id: '+48600300400', decyzja: 'kontynuacja' }).expect(200, { ok: true, decyzja: 'kontynuacja' });
     expect((await init().expect(200)).body.dynamic_variables.czy_powrot).toBe('tak');
     await request(server()).post('/halohub/tools/kontekst_rozmowy').set(tool).send({ caller_id: '+48600300400', decyzja: 'nowa_sprawa' }).expect(200, { ok: true, decyzja: 'nowa_sprawa', kontekst_usuniety: true });
-    expect((await init().expect(200)).body.dynamic_variables).toEqual({ czy_powrot: 'nie', poprzedni_kontekst: '' });
+    expect((await init().expect(200)).body.dynamic_variables).toMatchObject({ czy_powrot: 'nie', poprzedni_kontekst: '' });
 
     const t = await request(server()).post('/halohub/tools/znajdz_polaczenie').set(tool).send({ skad: 'Dworzec Główny', dokad: 'TAURON Arena' }).expect(200);
     expect(t.body).toMatchObject({ polaczenia: [], komunikat: expect.stringContaining('niedostępny') });
     await request(server()).post('/halohub/tools/znajdz_polaczenie').send({ skad: 'a', dokad: 'b' }).expect(401);
+  });
+
+  it('resumes a dropped call before the post-call webhook arrives and keeps context across short continuations', async () => {
+    const tool = { 'x-tool-secret': 'tool' };
+    const caller = '+48600700800';
+    const init = async () =>
+      (await request(server()).post('/halohub/webhooks/elevenlabs/init').set('x-init-secret', 'init').send({ caller_id: caller }).expect(200)).body.dynamic_variables;
+    const post = async (body: object) => {
+      const raw = JSON.stringify(body);
+      await request(server()).post('/halohub/webhooks/elevenlabs').set('Content-Type', 'application/json').set('ElevenLabs-Signature', sign(raw)).send(raw).expect(200);
+    };
+
+    // Call A: the agent saves progress during the call.
+    await request(server())
+      .post('/halohub/tools/zapisz_postep')
+      .set(tool)
+      .send({ caller_id: caller, conversation_id: 'r1', cel: 'TAURON Arena', ostatni_krok: 'czeka na tramwaj 50 na Dworcu Głównym', typ_uzytkownika: 'wozek', jezyk: 'pl' })
+      .expect(200, { ok: true });
+    await request(server()).post('/halohub/tools/zapisz_postep').send({ caller_id: caller, ostatni_krok: 'x' }).expect(401);
+
+    // The line drops; the caller redials before ElevenLabs sends the post-call webhook.
+    const b = await init();
+    expect(b.czy_powrot).toBe('tak');
+    expect(b.poprzedni_kontekst).toContain('Cel: TAURON Arena.');
+    expect(b.poprzedni_kontekst).toContain('Rozmówca: wózek.');
+    expect(b.poprzedni_kontekst).toContain('Ostatni krok: czeka na tramwaj 50 na Dworcu Głównym.');
+
+    // Call B (continuation) is short; then A's delayed post-call arrives – it must not overwrite B.
+    await request(server()).post('/halohub/tools/zapisz_postep').set(tool).send({ caller_id: caller, conversation_id: 'r2', ostatni_krok: 'jedzie tramwajem 50, wysiada na Rondzie Mogilskim' }).expect(200);
+    const startA = Math.floor(Date.now() / 1000) - 600;
+    const a = postCall('r1', caller, [], { ostatni_krok: { value: 'Dworzec Główny' }, kontekst_podsumowanie: { value: 'Jedzie z Dworca na HackYeah na wózku.' } });
+    a.data.metadata = { call_duration_secs: 120, start_time_unix_secs: startA };
+    await post(a);
+    let ctx = await init();
+    expect(ctx.poprzedni_kontekst).toContain('Ostatni krok: jedzie tramwajem 50, wysiada na Rondzie Mogilskim.');
+    expect(ctx.poprzedni_kontekst).toContain('Jedzie z Dworca na HackYeah na wózku.');
+
+    // B's own post-call: a continuation whose analysis knows little keeps the goal and summary.
+    const bCall = postCall('r2', caller, [], {
+      cel_podrozy: { value: '' },
+      kontekst_podsumowanie: { value: '' },
+      typ_uzytkownika: { value: '' },
+      ostatni_krok: { value: 'Rondo Mogilskie, przesiadka' },
+      czy_dotarl: { value: false },
+      kontynuacja: { value: true },
+    });
+    (bCall.data.conversation_initiation_client_data.dynamic_variables as Record<string, string>).czy_powrot = 'tak';
+    await post(bCall);
+    ctx = await init();
+    expect(ctx.poprzedni_kontekst).toContain('Cel: TAURON Arena.');
+    expect(ctx.poprzedni_kontekst).toContain('Rozmówca: wózek.');
+    expect(ctx.poprzedni_kontekst).toContain('Jedzie z Dworca na HackYeah na wózku.');
+    expect(ctx.poprzedni_kontekst).toContain('Ostatni krok: Rondo Mogilskie, przesiadka.');
+
+    // A new matter replaces the context.
+    const c = postCall('r3', caller, [], { cel_podrozy: { value: 'urząd' }, kontekst_podsumowanie: { value: 'Pytał o wymianę dowodu.' }, ostatni_krok: { value: '' }, kontynuacja: { value: false } });
+    (c.data.conversation_initiation_client_data.dynamic_variables as Record<string, string>).czy_powrot = 'tak';
+    await post(c);
+    ctx = await init();
+    expect(ctx.poprzedni_kontekst).toContain('Cel: urząd.');
+    expect(ctx.poprzedni_kontekst).not.toContain('TAURON');
   });
 
   it('serves the ROPS assistant: facets, advanced search with files, cited answer without LLM, voice tool', async () => {

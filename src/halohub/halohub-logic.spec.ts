@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 import { ObjectId } from 'mongodb';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { dynamicVariables } from './context.service.js';
+import { dynamicVariables, mergeKontekst } from './context.service.js';
 import {
   jezyk,
   parseBariery,
@@ -99,21 +99,43 @@ describe('ElevenLabs webhooks', () => {
   });
 
   it('builds the return-call greeting variables', () => {
-    expect(dynamicVariables(null)).toEqual({ czy_powrot: 'nie', poprzedni_kontekst: '' });
-    expect(
-      dynamicVariables({
-        conversation_id: 'c',
-        cel_podrozy: 'HackYeah',
-        typ_uzytkownika: 'bagaz',
-        jezyk: 'pl',
-        ostatni_krok: 'Rondo Mogilskie',
-        podsumowanie: 'Jedzie na HackYeah.',
-        czy_dotarl: false,
-      }),
-    ).toEqual({
-      czy_powrot: 'tak',
-      poprzedni_kontekst: 'Cel: HackYeah. Jedzie na HackYeah. Ostatni krok: Rondo Mogilskie.',
+    const fresh = dynamicVariables(null);
+    expect(fresh).toMatchObject({ czy_powrot: 'nie', poprzedni_kontekst: '' });
+    expect(fresh.powitanie).toContain('Halo, Hub!');
+    const back = dynamicVariables({
+      conversation_id: 'c',
+      cel_podrozy: 'HackYeah',
+      typ_uzytkownika: 'bagaz',
+      jezyk: 'uk',
+      ostatni_krok: 'Rondo Mogilskie',
+      podsumowanie: 'Jedzie na HackYeah.',
+      czy_dotarl: false,
     });
+    expect(back).toMatchObject({
+      czy_powrot: 'tak',
+      poprzedni_kontekst:
+        'Cel: HackYeah. Rozmówca: duży bagaż. Język poprzedniej rozmowy: uk. Jedzie na HackYeah. Ostatni krok: Rondo Mogilskie.',
+    });
+    // Returning callers get a short greeting in their language, without the project intro.
+    expect(back.powitanie).toMatch(/MayAI/);
+    expect(back.powitanie).not.toContain('крок за кроком');
+    expect(back.powitanie.length).toBeLessThan(fresh.powitanie.length);
+  });
+
+  it('merges a continuation into the previous context without wiping it', () => {
+    const prev = {
+      conversation_id: 'a',
+      cel_podrozy: 'HackYeah',
+      typ_uzytkownika: 'wozek',
+      jezyk: 'pl',
+      ostatni_krok: 'Dworzec Główny, tramwaj 50',
+      podsumowanie: 'Jedzie z Dworca na HackYeah na wózku.',
+      czy_dotarl: false,
+    };
+    const next = { conversation_id: 'b', cel_podrozy: null, typ_uzytkownika: null, jezyk: 'pl', ostatni_krok: 'Rondo Mogilskie', podsumowanie: null, czy_dotarl: null };
+    expect(mergeKontekst(prev, next)).toEqual({ ...prev, conversation_id: 'b', ostatni_krok: 'Rondo Mogilskie' });
+    // Gaps only: an older call never overwrites what a newer one stored.
+    expect(mergeKontekst(next, prev, { tylkoBraki: true })).toEqual({ ...prev, conversation_id: 'b', ostatni_krok: 'Rondo Mogilskie', jezyk: 'pl' });
   });
 });
 
