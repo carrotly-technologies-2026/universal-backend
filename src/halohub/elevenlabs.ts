@@ -73,12 +73,14 @@ export function parsePostCall(body: unknown): PostCall | null {
   );
   const caller = dynamic.system__caller_id ?? phone.external_number;
   const start = Number(meta.start_time_unix_secs);
+  // A previous context was offered, but the agent may have judged this a new matter.
+  const kontynuacja = bool(pola.kontynuacja);
   return {
     conversationId: d.conversation_id,
     callerId: typeof caller === 'string' && caller ? caller : null,
     czasTrwaniaS: num(meta.call_duration_secs),
     rozpoczeto: Number.isFinite(start) && start > 0 ? new Date(start * 1000) : null,
-    czyPowrot: dynamic.czy_powrot === 'tak',
+    czyPowrot: dynamic.czy_powrot === 'tak' && kontynuacja !== false,
     transkrypcja: d.transcript ?? null,
     pola,
   };

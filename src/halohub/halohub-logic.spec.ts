@@ -69,6 +69,16 @@ describe('ElevenLabs webhooks', () => {
     expect(call.czyPowrot).toBe(true);
     expect(jezyk(call.pola.jezyk_rozmowy)).toBe('pl');
     expect(parsePostCall({ type: 'post_call_audio', data: {} })).toBeNull();
+    // The agent judged the call a new matter although a context was offered.
+    const fresh = parsePostCall({
+      type: 'post_call_transcription',
+      data: {
+        conversation_id: 'conv_2',
+        conversation_initiation_client_data: { dynamic_variables: { czy_powrot: 'tak' } },
+        analysis: { data_collection_results: { kontynuacja: { value: false } } },
+      },
+    })!;
+    expect(fresh.czyPowrot).toBe(false);
   });
 
   it('validates barriers and needs from the LLM extraction', () => {
@@ -102,7 +112,7 @@ describe('ElevenLabs webhooks', () => {
       }),
     ).toEqual({
       czy_powrot: 'tak',
-      poprzedni_kontekst: 'Jedzie na HackYeah. Ostatni krok: Rondo Mogilskie.',
+      poprzedni_kontekst: 'Cel: HackYeah. Jedzie na HackYeah. Ostatni krok: Rondo Mogilskie.',
     });
   });
 });
