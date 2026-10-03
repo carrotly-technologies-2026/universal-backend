@@ -26,6 +26,12 @@ describe('chunkText', () => {
 });
 
 describe('fusion', () => {
+  it('counts only the best chunk of a document per ranking', () => {
+    const scores = reciprocalRankFusion([['long', 'long', 'long', 'short']]);
+    expect(scores.get('long')).toBeCloseTo(1 / 61);
+    expect(scores.get('short')).toBeCloseTo(1 / 62);
+  });
+
   it('ranks documents found by both rankings first', () => {
     const scores = reciprocalRankFusion([
       ['a', 'b', 'c'],
