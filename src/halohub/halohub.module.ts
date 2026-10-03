@@ -1,0 +1,41 @@
+import { Module } from '@nestjs/common';
+import { RagModule } from '../rag/rag.module.js';
+import { ContextService } from './context.service.js';
+import { ConversationService } from './conversation.service.js';
+import { DemoService } from './demo.service.js';
+import { HalohubStore } from './halohub.store.js';
+import { IngestService } from './ingest/ingest.service.js';
+import { KnowledgeService } from './knowledge.service.js';
+import { MetricsService } from './metrics.service.js';
+import { PipelineService } from './pipeline.service.js';
+import { JobsController, PanelController } from './panel.controller.js';
+import { PublicController } from './public.controller.js';
+import { ReportService } from './report.service.js';
+import { SchedulerService } from './scheduler.service.js';
+import { TelephonyController } from './telephony.controller.js';
+import { TopicsService } from './topics.service.js';
+
+/**
+ * "Halo, Hub!" – voice guide for Kraków (polish-stonks-bot/PLAN.md).
+ * Domain module on top of the generic Database, LLM and RAG modules; all
+ * routes live under /halohub.
+ */
+@Module({
+  imports: [RagModule],
+  controllers: [TelephonyController, PanelController, JobsController, PublicController],
+  providers: [
+    HalohubStore,
+    ContextService,
+    ConversationService,
+    KnowledgeService,
+    TopicsService,
+    MetricsService,
+    ReportService,
+    IngestService,
+    DemoService,
+    SchedulerService,
+    PipelineService,
+  ],
+  exports: [IngestService, TopicsService, ReportService, DemoService],
+})
+export class HalohubModule {}
