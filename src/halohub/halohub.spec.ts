@@ -239,6 +239,33 @@ describe('Halo, Hub! API (MongoDB)', () => {
     await request(server()).post('/halohub/tools/znajdz_polaczenie').send({ skad: 'a', dokad: 'b' }).expect(401);
   });
 
+  it('serves the ROPS assistant: facets, advanced search with files, cited answer without LLM, voice tool', async () => {
+    await request(server())
+      .post('/rag/halohub/documents')
+      .set('x-api-key', 'rag')
+      .send({ documents: [{ url: 'https://rops.krakow.pl/pliki-do-pobrania/wpis,2025-uslugi,1', title: 'Usługi społeczne w Małopolsce 2025', text: 'Raport o usługach opiekuńczych dla seniorów i deficytach usług społecznych w Małopolsce.', source: 'raporty' }] })
+      .expect(201);
+    const f = (await request(server()).get('/halohub/public/rops/facety').expect(200)).body;
+    expect(f.zrodla.map((z: { wartosc: string }) => z.wartosc).sort()).toEqual(['biblioteka', 'raporty']);
+
+    const s = (await request(server()).get('/halohub/public/rops/szukaj?q=usługi%20opiekuńcze%20seniorów&zrodla=raporty').expect(200)).body;
+    expect(s.wyniki[0]).toMatchObject({ tytul: 'Usługi społeczne w Małopolsce 2025', zrodlo_nazwa: 'Raporty z badań ROPS', pliki: [{ nazwa: 'Raport (PDF)', url: 'https://rops.krakow.pl/pliki-do-pobrania/wpis,2025-uslugi,1' }] });
+    const browse = (await request(server()).get('/halohub/public/rops/szukaj?zrodla=biblioteka').expect(200)).body;
+    // Repeated params and commas inside category names.
+    await request(server()).get('/halohub/public/rops/szukaj?kategorie=Dla%20dzieci%2C%20m%C5%82odzie%C5%BCy%20i%20rodziny&kategorie=Dla%20senior%C3%B3w').expect(200);
+    await request(server()).get('/halohub/public/rops/szukaj?q=a&q=b&zrodla=biblioteka&zrodla=raporty').expect(200);
+    expect(browse.razem).toBe(2);
+
+    const a = (await request(server()).post('/halohub/public/rops/zapytaj').send({ pytanie: 'Jakie są deficyty usług opiekuńczych dla seniorów?' }).expect(200)).body;
+    expect(a.model).toBeNull();
+    expect(a.odpowiedz).toContain('Usługi społeczne w Małopolsce 2025');
+    expect(a.zrodla[0]).toMatchObject({ nr: 1, tytul: 'Usługi społeczne w Małopolsce 2025' });
+    await request(server()).post('/halohub/public/rops/zapytaj').send({}).expect(400);
+
+    const v = (await request(server()).post('/halohub/tools/szukaj_w_rops').set('x-tool-secret', 'tool').send({ pytanie: 'usługi społeczne seniorzy' }).expect(200)).body;
+    expect(v.wyniki[0]).toMatchObject({ tytul: 'Usługi społeczne w Małopolsce 2025', pliki: ['Raport (PDF)'] });
+  });
+
   it('accepts unsigned post-call webhooks when no secret is configured', async () => {
     delete process.env.ELEVENLABS_WEBHOOK_SECRET;
     try {

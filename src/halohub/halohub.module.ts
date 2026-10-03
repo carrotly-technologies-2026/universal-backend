@@ -13,6 +13,8 @@ import { PipelineService } from './pipeline.service.js';
 import { JobsController, PanelController } from './panel.controller.js';
 import { PublicController } from './public.controller.js';
 import { ReportService } from './report.service.js';
+import { RopsController } from './rops.controller.js';
+import { RopsService } from './rops.service.js';
 import { SchedulerService } from './scheduler.service.js';
 import { TelephonyController } from './telephony.controller.js';
 import { TopicsService } from './topics.service.js';
@@ -24,7 +26,7 @@ import { TopicsService } from './topics.service.js';
  */
 @Module({
   imports: [RagModule, TransitModule, PlacesModule],
-  controllers: [TelephonyController, PanelController, JobsController, PublicController],
+  controllers: [TelephonyController, PanelController, JobsController, PublicController, RopsController],
   providers: [
     HalohubStore,
     ContextService,
@@ -37,6 +39,7 @@ import { TopicsService } from './topics.service.js';
     DemoService,
     SchedulerService,
     PipelineService,
+    RopsService,
   ],
   exports: [IngestService, TopicsService, ReportService, DemoService],
 })

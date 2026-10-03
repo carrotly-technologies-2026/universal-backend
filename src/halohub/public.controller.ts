@@ -21,6 +21,7 @@ export class PublicController {
       numer: formatNumber(numer),
       numer_tel: numer,
       elevenlabs_agent_id: process.env.ELEVENLABS_AGENT_ID || null,
+      rops_agent_id: process.env.ELEVENLABS_ROPS_AGENT_ID || null,
     };
   }
 
