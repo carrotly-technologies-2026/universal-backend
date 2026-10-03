@@ -185,6 +185,8 @@ export class TopicsService {
         priorytet: { $in: ['P1', 'P2'] },
         $or: [
           { innowacje_odswiezono: null },
+          // Matched before innovations were checked by the LLM.
+          { innowacje_sprawdzone: { $ne: true } },
           { innowacje_odswiezono: { $lt: new Date(now.getTime() - DAY_MS) } },
         ],
       })
@@ -200,7 +202,7 @@ export class TopicsService {
         const innowacje = await this.knowledge.innowacje(query);
         await tematy.updateOne(
           { _id: t._id },
-          { $set: { innowacje, innowacje_odswiezono: now } },
+          { $set: { innowacje, innowacje_odswiezono: now, innowacje_sprawdzone: true } },
         );
         n++;
       } catch (err) {

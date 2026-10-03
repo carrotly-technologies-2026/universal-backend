@@ -114,6 +114,8 @@ export interface Temat {
   historia: { status: StatusTematu; kiedy: Date }[];
   innowacje: Innowacja[];
   innowacje_odswiezono: Date | null;
+  /** Innovations filtered for relevance by the LLM. */
+  innowacje_sprawdzone?: boolean;
   pierwsze_zgloszenie: Date;
   ostatnie_zgloszenie: Date;
   /** False once no barrier of the topic is in the 30-day window. */

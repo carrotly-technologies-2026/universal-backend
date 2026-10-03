@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { GeminiService } from '../llm/gemini.service.js';
 import { RagHit, RagService } from '../rag/rag.service.js';
 import { HalohubStore } from './halohub.store.js';
 import { CORPUS, Innowacja } from './model.js';
@@ -43,6 +44,7 @@ export class KnowledgeService {
   constructor(
     private readonly rag: RagService,
     private readonly store: HalohubStore,
+    private readonly gemini: GeminiService,
   ) {}
 
   /** Never throws: a broken search answers "no results" to the caller. */
@@ -74,13 +76,36 @@ export class KnowledgeService {
     return { wyniki, komunikat: wyniki.length ? null : BRAK };
   }
 
-  /** Innovations matching a topic, for reports and the priority list. */
+  /**
+   * Innovations matching a topic, for reports and the priority list. The
+   * library has nothing on most barriers, and the search always returns its
+   * nearest documents, so an LLM keeps only the ones that actually help.
+   * Throws LlmUnavailableError when that check fails; callers retry later.
+   */
   async innowacje(tekst: string, k = 3): Promise<Innowacja[]> {
     const hits = await this.rag.search(CORPUS, tekst, {
-      k,
+      k: k * 3,
       sources: ['biblioteka'],
     });
-    return hits.map(toWynik);
+    if (!hits.length || !this.gemini.available) return hits.slice(0, k).map(toWynik);
+    const kandydaci = hits.map((h, i) => ({
+      nr: i,
+      tytul: h.title,
+      opis: (h.summary ?? firstSentences(h.snippet, 3)).slice(0, 400),
+    }));
+    const odp = (await this.gemini.generate({
+      system:
+        'Oceniasz, które innowacje społeczne z biblioteki ROPS mogą realnie pomóc usunąć lub złagodzić zgłoszoną barierę w Krakowie. Wybierz tylko te, które dotyczą tego samego problemu i tej samej grupy osób. Luźne skojarzenia (np. ogólna pomoc seniorom przy barierze w tramwaju) się nie liczą. Jeśli żadna nie pasuje, zwróć pustą listę.',
+      prompt: `BARIERA:\n${tekst}\n\nKANDYDACI:\n${JSON.stringify(kandydaci)}`,
+      jsonSchema: {
+        type: 'object',
+        properties: { pasujace: { type: 'array', items: { type: 'integer' } } },
+        required: ['pasujace'],
+      },
+      timeoutMs: 30_000,
+    })) as { pasujace?: unknown };
+    const nr = new Set(Array.isArray(odp.pasujace) ? odp.pasujace : []);
+    return hits.filter((_, i) => nr.has(i)).slice(0, k).map(toWynik);
   }
 
   private async cached(pytanie: string, grupa: string | null) {
